@@ -1,0 +1,25 @@
+# configs/vctk.yaml  (deltas from ljspeech.yaml)
+n_vocab: 178
+n_mels: 80
+enc_dim: 192
+n_spk: 110
+
+n_segments: 2
+alpha: 1e-5
+delta_start: 0.1
+delta_end: 0.001
+n_delta_bins: 8
+shared_dropout_p: 0.1            # raised for multi-speaker robustness (§4.3)
+
+n_epochs_stage1: 500
+n_epochs_stage2: 500
+n_epochs_adversarial: 50
+
+optimizer: adam
+lr: 1.0e-4
+batch_size: 16
+
+inference_nfe: 2
+eval_nfe_variants: [2, 10, 25]
+
+vocoder: hifigan_v1

@@ -1,0 +1,15 @@
+torch>=2.1
+torchaudio>=2.1
+numpy
+scipy
+einops
+librosa
+soundfile
+matplotlib
+tqdm
+pyyaml
+tensorboard
+phonemizer
+openai-whisper
+jiwer
+numba

@@ -1,0 +1,26 @@
+# configs/ljspeech.yaml
+n_vocab: 178                 # size of the IPA symbol table
+n_mels: 80
+enc_dim: 192
+n_spk: 0                     # single speaker
+
+n_segments: 2                 # S
+alpha: 1e-5                   # loss weight on L_vc
+delta_start: 0.1
+delta_end: 0.001
+n_delta_bins: 8               # K
+shared_dropout_p: 0.05
+
+n_epochs_stage1: 700
+n_epochs_stage2: 700
+n_epochs_adversarial: 150
+
+optimizer: adam
+lr: 1.0e-4
+batch_size: 16
+
+inference_nfe: 2
+eval_nfe_variants: [2, 10, 25]
+
+vocoder: hifigan_v1
+gpu_for_rtf: "Tesla V100"
