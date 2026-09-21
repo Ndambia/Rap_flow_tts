@@ -40,7 +40,13 @@ def train_stage2(cfg, model):
                 log_p_grid = prior_log_likelihood(mel, mu_phoneme, txt_mask)
                 align_path = monotonic_alignment_search(log_p_grid, phon_lens, mel_lens)
                 durations = align_path.sum(1)
-                mu_expanded = expand_by_duration(mu_phoneme, durations)[:, :, : mel.shape[-1]]
+                mu_expanded = expand_by_duration(mu_phoneme, durations)
+                # Ensure mu_expanded matches mel length exactly (pad if too short, truncate if too long)
+                if mu_expanded.shape[-1] < mel.shape[-1]:
+                    padding = mel.shape[-1] - mu_expanded.shape[-1]
+                    mu_expanded = torch.nn.functional.pad(mu_expanded, (0, padding))
+                else:
+                    mu_expanded = mu_expanded[:, :, : mel.shape[-1]]
 
             mel_mask = (torch.arange(mel.shape[-1], device=device)[None, None, :]
                         < mel_lens[:, None, None]).float()

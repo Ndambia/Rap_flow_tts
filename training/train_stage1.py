@@ -31,7 +31,12 @@ def train_stage1(cfg):
                 align_path = monotonic_alignment_search(log_p_grid, phon_lens, mel_lens)
             durations = align_path.sum(1)                       # (B, T_txt)
             mu_expanded = expand_by_duration(mu_phoneme, durations)
-            mu_expanded = mu_expanded[:, :, : mel.shape[-1]]
+            # Ensure mu_expanded matches mel length exactly (pad if too short, truncate if too long)
+            if mu_expanded.shape[-1] < mel.shape[-1]:
+                padding = mel.shape[-1] - mu_expanded.shape[-1]
+                mu_expanded = torch.nn.functional.pad(mu_expanded, (0, padding))
+            else:
+                mu_expanded = mu_expanded[:, :, : mel.shape[-1]]
 
             l_dur = duration_loss(log_dur_pred, durations, phon_lens)
             l_prior = prior_loss(mel, mu_expanded, mel_lens)

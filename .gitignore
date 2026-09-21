@@ -1,0 +1,13 @@
+# Ignore dataset folder
+data/
+
+# Checkpoints / large model files
+checkpoints/
+*.pt
+*.pth
+
+# Python / IDE
+__pycache__/
+*.pyc
+.vscode/
+.env

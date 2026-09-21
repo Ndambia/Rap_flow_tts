@@ -12,10 +12,23 @@ def segment_index(t, n_segments):
     return torch.clamp((t * n_segments).floor().long(), max=n_segments - 1)
 
 
+def _align_len(a, b):
+    """Trim both tensors along dim-2 to their shared minimum length.
+
+    Stride-2 Conv/ConvTranspose layers don't always round-trip the time
+    dimension exactly (e.g. 769 -> 384 -> 768), so v_pred can arrive 1-3
+    frames shorter than x_t.  This helper makes every downstream operation
+    safe without touching the model weights.
+    """
+    L = min(a.shape[-1], b.shape[-1])
+    return a[..., :L], b[..., :L]
+
+
 def f_theta(v_pred, t, x_t, n_segments, seg_i):
     """f^i_theta(t, x_t, mu) = x_t + ((i+1)/S - t) * v^i_theta(t, x_t, mu).  Eq.(4)."""
     seg_end = (seg_i.float() + 1) / n_segments
     coeff = (seg_end - t.squeeze(-1).squeeze(-1))[:, None, None]
+    v_pred, x_t = _align_len(v_pred, x_t)   # guard against stride-2 length drift
     return x_t + coeff * v_pred
 
 
@@ -53,10 +66,18 @@ class ConsistencyFMLoss:
         x_t = sample_xt(x0, x1, t)
 
         v_pred = decoder(t.squeeze(-1).squeeze(-1), x_t, mu, spk_ids=spk_ids)
-        f_pred = f_theta(v_pred, t, x_t, self.n_segments, seg_i)
-        x_target = straight_flow_target_endpoint(x0, x1, t, self.n_segments, seg_i)
+        # Trim all tensors to the shortest time dim (guards against stride-2 drift)
+        L = min(x_t.shape[-1], v_pred.shape[-1])
+        x_t_L      = x_t[..., :L]
+        v_pred_L   = v_pred[..., :L]
+        x0_L       = x0[..., :L]
+        x1_L       = x1[..., :L]
+        mel_mask_L = mel_mask[..., :L]
 
-        loss = self._metric(f_pred * mel_mask, x_target * mel_mask)
+        f_pred   = f_theta(v_pred_L, t, x_t_L, self.n_segments, seg_i)
+        x_target = straight_flow_target_endpoint(x0_L, x1_L, t, self.n_segments, seg_i)
+
+        loss = self._metric(f_pred * mel_mask_L, x_target * mel_mask_L)
         return loss
 
     def stage2_loss(self, decoder, teacher_decoder, x0, x1, mu, mel_mask, delta_t,
@@ -67,7 +88,6 @@ class ConsistencyFMLoss:
         x_t = sample_xt(x0, x1, t)
 
         t_next = t + delta_t
-        x_t_next = sample_xt(x0, x1, t_next)
         # keep t_next inside the SAME segment as t, else clip to segment boundary
         seg_end = (seg_i.float() + 1) / self.n_segments
         t_next_clipped = torch.minimum(t_next.squeeze(-1).squeeze(-1), seg_end - 1e-6)[:, None, None]
@@ -83,11 +103,20 @@ class ConsistencyFMLoss:
                 shared_dropout_masks=dropout_masks,
             )
 
-        f_student = f_theta(v_student, t, x_t, self.n_segments, seg_i)
-        f_teacher = f_theta(v_teacher, t_next_clipped, x_t_next, self.n_segments, seg_i)
+        # Trim everything to the shortest time dim across all tensors
+        L = min(x_t.shape[-1], x_t_next.shape[-1],
+                v_student.shape[-1], v_teacher.shape[-1])
+        x_t_L        = x_t[..., :L]
+        x_t_next_L   = x_t_next[..., :L]
+        v_student_L  = v_student[..., :L]
+        v_teacher_L  = v_teacher[..., :L]
+        mel_mask_L   = mel_mask[..., :L]
 
-        l_sf = self._metric(f_student * mel_mask, (f_teacher * mel_mask).detach())
-        l_vc = self._metric(v_student * mel_mask, (v_teacher * mel_mask).detach())
+        f_student = f_theta(v_student_L, t,             x_t_L,      self.n_segments, seg_i)
+        f_teacher = f_theta(v_teacher_L, t_next_clipped, x_t_next_L, self.n_segments, seg_i)
+
+        l_sf = self._metric(f_student * mel_mask_L, (f_teacher * mel_mask_L).detach())
+        l_vc = self._metric(v_student_L * mel_mask_L, (v_teacher_L * mel_mask_L).detach())
 
         loss = l_sf + self.alpha * l_vc
         return loss, l_sf.detach(), l_vc.detach()
